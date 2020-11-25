@@ -1,7 +1,7 @@
 /*
  * smart-doc
  *
- * Copyright (C) 2019-2020 smart-doc
+ * Copyright (C) 2018-2020 smart-doc
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -21,6 +21,13 @@
  * under the License.
  */
 package com.power.doc.model;
+
+import com.power.common.model.EnumDictionary;
+import com.power.common.util.EnumUtil;
+import org.apache.commons.lang3.StringUtils;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author yu 2019/10/31.
@@ -53,9 +60,15 @@ public class ApiDataDictionary {
     private String descField;
 
 
+    @Deprecated
     public static ApiDataDictionary dict() {
         return new ApiDataDictionary();
     }
+
+    public static ApiDataDictionary builder() {
+        return new ApiDataDictionary();
+    }
+
 
     public String getTitle() {
         return title;
@@ -72,6 +85,9 @@ public class ApiDataDictionary {
 
     public ApiDataDictionary setEnumClass(Class enumClass) {
         this.enumClass = enumClass;
+        if (StringUtils.isBlank(this.enumClassName)) {
+            this.enumClassName = enumClass.getSimpleName();
+        }
         return this;
     }
 
@@ -100,5 +116,31 @@ public class ApiDataDictionary {
     public ApiDataDictionary setEnumClassName(String enumClassName) {
         this.enumClassName = enumClassName;
         return this;
+    }
+
+    public List<EnumDictionary> getEnumDataDict() {
+        if (this.enumClass != null) {
+            return EnumUtil.getEnumInformation(this.enumClass, this.getCodeField(),
+                    this.getDescField());
+        } else {
+            return new ArrayList<>();
+        }
+    }
+
+    @Override
+    public String toString() {
+        final StringBuilder sb = new StringBuilder("{");
+        sb.append("\"title\":\"")
+                .append(title).append('\"');
+        sb.append(",\"enumClass\":")
+                .append(enumClass);
+        sb.append(",\"enumClassName\":\"")
+                .append(enumClassName).append('\"');
+        sb.append(",\"codeField\":\"")
+                .append(codeField).append('\"');
+        sb.append(",\"descField\":\"")
+                .append(descField).append('\"');
+        sb.append('}');
+        return sb.toString();
     }
 }

@@ -1,7 +1,7 @@
 /*
  * smart-doc
  *
- * Copyright (C) 2019-2020 smart-doc
+ * Copyright (C) 2018-2020 smart-doc
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -26,6 +26,7 @@ import com.github.javafaker.Faker;
 import com.power.common.util.*;
 import com.power.doc.constants.DocAnnotationConstants;
 import com.power.doc.constants.DocGlobalConstants;
+import com.power.doc.model.DocJavaField;
 import com.power.doc.model.FormData;
 import com.thoughtworks.qdox.model.DocletTag;
 import com.thoughtworks.qdox.model.JavaAnnotation;
@@ -150,14 +151,12 @@ public class DocUtil {
         for (Map.Entry<String, String> entry : fieldValue.entrySet()) {
             if (key.contains(entry.getKey())) {
                 value = new StringBuilder(entry.getValue());
-                if (!isArray) {
-                    break;
-                } else {
+                if (isArray) {
                     for (int i = 0; i < 2; i++) {
                         value.append(",").append(entry.getValue());
                     }
-                    break;
                 }
+                break;
             }
         }
         if (null == value) {
@@ -279,8 +278,6 @@ public class DocUtil {
         switch (method) {
             case "RequestMethod.POST":
                 return "POST";
-            case "RequestMethod.GET":
-                return "GET";
             case "RequestMethod.PUT":
                 return "PUT";
             case "RequestMethod.DELETE":
@@ -299,10 +296,11 @@ public class DocUtil {
      * @return String
      */
     public static String handleMappingValue(JavaAnnotation annotation) {
-        if (null == annotation.getNamedParameter(DocAnnotationConstants.VALUE_PROP)) {
+        String url = getRequestMappingUrl(annotation);
+        if (StringUtil.isEmpty(url)) {
             return "/";
         } else {
-            return StringUtil.trimBlank(String.valueOf(annotation.getNamedParameter(DocAnnotationConstants.VALUE_PROP)));
+            return StringUtil.trimBlank(url);
         }
     }
 
@@ -355,11 +353,15 @@ public class DocUtil {
     /**
      * Get field tags
      *
-     * @param field JavaField
+     * @param field        JavaField
+     * @param docJavaField DocJavaField
      * @return map
      */
-    public static Map<String, String> getFieldTagsValue(final JavaField field) {
+    public static Map<String, String> getFieldTagsValue(final JavaField field, DocJavaField docJavaField) {
         List<DocletTag> paramTags = field.getTags();
+        if (CollectionUtil.isEmpty(paramTags) && Objects.nonNull(docJavaField)) {
+            paramTags = docJavaField.getDocletTags();
+        }
         return paramTags.stream().collect(Collectors.toMap(DocletTag::getName, DocletTag::getValue,
                 (key1, key2) -> key1 + "," + key2));
     }
@@ -443,6 +445,7 @@ public class DocUtil {
             case "Double":
             case "double":
             case "Float":
+            case "Number":
             case "float":
             case "Boolean":
             case "boolean":
@@ -453,6 +456,58 @@ public class DocUtil {
                 return true;
             default:
                 return false;
+        }
+    }
+
+    public static String javaTypeToOpenApiTypeConvert(String type){
+        switch (type) {
+            case "int32":
+            case "int16":
+                return "integer";
+            case "int64":
+                return "long";
+            case "double":
+            case "float":
+            case "number":
+                return "number";
+            case "boolean":
+                return "boolean";
+            case "string":
+                return "string";
+            default:
+                return "object"; //array object file
+        }
+    }
+
+    /**
+     * Gets escape and clean comment.
+     *
+     * @param comment the comment
+     * @return the escape and clean comment
+     */
+    public static String getEscapeAndCleanComment(String comment) {
+        if (StringUtil.isEmpty(comment)) {
+            return "";
+        }
+        return comment.replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll(System.lineSeparator(), "");
+    }
+
+    /**
+     * Get the url from 'value' or 'path' attribute
+     *
+     * @param annotation RequestMapping GetMapping PostMapping etc.
+     * @return the url
+     */
+    public static String getRequestMappingUrl(JavaAnnotation annotation) {
+        Object url = annotation.getNamedParameter(DocAnnotationConstants.VALUE_PROP);
+
+        if (null != url) {
+            return url.toString();
+        } else {
+            url = annotation.getNamedParameter(DocAnnotationConstants.PATH_PROP);
+            return null == url ? StringUtil.ENMPTY : url.toString();
         }
     }
 }

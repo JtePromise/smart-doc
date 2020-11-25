@@ -1,7 +1,7 @@
 /*
  * smart-doc
  *
- * Copyright (C) 2019-2020 smart-doc
+ * Copyright (C) 2018-2020 smart-doc
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -107,6 +107,16 @@ public class ApiMethodDoc implements Serializable {
      * http request headers
      */
     private List<ApiReqHeader> requestHeaders;
+
+    /**
+     * path params
+     */
+    private List<ApiParam> pathParams;
+
+    /**
+     * query params
+     */
+    private List<ApiParam> queryParams;
 
     /**
      * http request params
@@ -290,5 +300,70 @@ public class ApiMethodDoc implements Serializable {
 
     public void setDeprecated(boolean deprecated) {
         this.deprecated = deprecated;
+    }
+
+    public List<ApiParam> getPathParams() {
+        return pathParams;
+    }
+
+    public void setPathParams(List<ApiParam> pathParams) {
+        this.pathParams = pathParams;
+    }
+
+    public List<ApiParam> getQueryParams() {
+        return queryParams;
+    }
+
+    public void setQueryParams(List<ApiParam> queryParams) {
+        this.queryParams = queryParams;
+    }
+
+    @Override
+    public String toString() {
+        final StringBuilder sb = new StringBuilder("{");
+        sb.append("\"methodId\":\"")
+                .append(methodId).append('\"');
+        sb.append(",\"name\":\"")
+                .append(name).append('\"');
+        sb.append(",\"order\":")
+                .append(order);
+        sb.append(",\"desc\":\"")
+                .append(desc).append('\"');
+        sb.append(",\"detail\":\"")
+                .append(detail).append('\"');
+        sb.append(",\"serverUrl\":\"")
+                .append(serverUrl).append('\"');
+        sb.append(",\"url\":\"")
+                .append(url).append('\"');
+        sb.append(",\"path\":\"")
+                .append(path).append('\"');
+        sb.append(",\"type\":\"")
+                .append(type).append('\"');
+        sb.append(",\"author\":\"")
+                .append(author).append('\"');
+        sb.append(",\"headers\":\"")
+                .append(headers).append('\"');
+        sb.append(",\"contentType\":\"")
+                .append(contentType).append('\"');
+        sb.append(",\"requestHeaders\":")
+                .append(requestHeaders);
+        sb.append(",\"pathParams\":")
+                .append(pathParams);
+        sb.append(",\"queryParams\":")
+                .append(queryParams);
+        sb.append(",\"requestParams\":")
+                .append(requestParams);
+        sb.append(",\"requestUsage\":\"")
+                .append(requestUsage).append('\"');
+        sb.append(",\"requestExample\":")
+                .append(requestExample);
+        sb.append(",\"responseUsage\":\"")
+                .append(responseUsage).append('\"');
+        sb.append(",\"responseParams\":")
+                .append(responseParams);
+        sb.append(",\"deprecated\":")
+                .append(deprecated);
+        sb.append('}');
+        return sb.toString();
     }
 }

@@ -1,7 +1,7 @@
 /*
  * smart-doc
  *
- * Copyright (C) 2019-2020 smart-doc
+ * Copyright (C) 2018-2020 smart-doc
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -29,20 +29,21 @@ import com.power.doc.helper.ParamsBuildHelper;
 import com.power.doc.model.*;
 import com.power.doc.utils.DocClassUtil;
 import com.power.doc.utils.DocUtil;
+import com.power.doc.utils.JavaClassUtil;
 import com.power.doc.utils.JavaClassValidateUtil;
 import com.thoughtworks.qdox.model.JavaClass;
 import com.thoughtworks.qdox.model.JavaMethod;
+import com.thoughtworks.qdox.model.JavaType;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 
 import static com.power.doc.constants.DocGlobalConstants.NO_COMMENTS_FOUND;
+import static com.power.doc.constants.DocTags.IGNORE_RESPONSE_BODY_ADVICE;
 
 /**
  * @author yu 2019/12/21.
  */
-public interface IDocBuildTemplate {
+public interface IDocBuildTemplate<T> {
 
     default String createDocRenderHeaders(List<ApiReqHeader> headers, boolean isAdoc) {
         StringBuilder builder = new StringBuilder();
@@ -84,24 +85,44 @@ public interface IDocBuildTemplate {
             String name = DocUtil.generateId(apiDoc.getName());
             apiDoc.setAlias(name);
         }
-        apiDoc.setDesc(cls.getComment());
+        String desc = DocUtil.getEscapeAndCleanComment(cls.getComment());
+        apiDoc.setDesc(desc);
         apiDoc.setList(apiMethodDocs);
         apiDocList.add(apiDoc);
     }
 
 
-    default List<ApiParam> buildReturnApiParams(JavaMethod method, ProjectDocConfigBuilder projectBuilder) {
+    default List<ApiParam> buildReturnApiParams(DocJavaMethod docJavaMethod, ProjectDocConfigBuilder projectBuilder) {
+        JavaMethod method = docJavaMethod.getJavaMethod();
         if (method.getReturns().isVoid()) {
             return null;
         }
-        ApiReturn apiReturn = DocClassUtil.processReturnType(method.getReturnType().getGenericCanonicalName());
+        String returnTypeGenericCanonicalName = method.getReturnType().getGenericCanonicalName();
+        if (Objects.nonNull(projectBuilder.getApiConfig().getResponseBodyAdvice())
+                && Objects.isNull(method.getTagByName(IGNORE_RESPONSE_BODY_ADVICE))) {
+            String responseBodyAdvice = projectBuilder.getApiConfig().getResponseBodyAdvice().getClassName();
+            returnTypeGenericCanonicalName = new StringBuffer()
+                    .append(responseBodyAdvice)
+                    .append("<")
+                    .append(returnTypeGenericCanonicalName).append(">").toString();
+        }
+        Map<String, JavaType> actualTypesMap = docJavaMethod.getActualTypesMap();
+        ApiReturn apiReturn = DocClassUtil.processReturnType(returnTypeGenericCanonicalName);
         String returnType = apiReturn.getGenericCanonicalName();
+        if (Objects.nonNull(actualTypesMap)) {
+            for (Map.Entry<String, JavaType> entry : actualTypesMap.entrySet()) {
+                returnType = returnType.replace(entry.getKey(), entry.getValue().getCanonicalName());
+            }
+        }
+
         String typeName = apiReturn.getSimpleName();
-        if (this.ignoreReturnObject(typeName)) {
+        if (this.ignoreReturnObject(typeName, projectBuilder.getApiConfig().getIgnoreRequestParams())) {
             return null;
         }
         if (JavaClassValidateUtil.isPrimitive(typeName)) {
-            return ParamsBuildHelper.primitiveReturnRespComment(DocClassUtil.processTypeNameForParams(typeName));
+            String processedName = projectBuilder.getApiConfig().getShowJavaType() ?
+                    JavaClassUtil.getClassSimpleName(typeName) : DocClassUtil.processTypeNameForParams(typeName);
+            return ParamsBuildHelper.primitiveReturnRespComment(processedName);
         }
         if (JavaClassValidateUtil.isCollection(typeName)) {
             if (returnType.contains("<")) {
@@ -110,7 +131,7 @@ public interface IDocBuildTemplate {
                     return ParamsBuildHelper.primitiveReturnRespComment("array of " + DocClassUtil.processTypeNameForParams(gicName));
                 }
                 return ParamsBuildHelper.buildParams(gicName, "", 0, null, projectBuilder.getCustomRespFieldMap(),
-                        Boolean.TRUE, new HashMap<>(), projectBuilder, null);
+                        Boolean.TRUE, new HashMap<>(), projectBuilder, null, 0);
             } else {
                 return null;
             }
@@ -124,19 +145,19 @@ public interface IDocBuildTemplate {
                 return ParamsBuildHelper.primitiveReturnRespComment("key value");
             }
             return ParamsBuildHelper.buildParams(keyValue[1], "", 0, null, projectBuilder.getCustomRespFieldMap(),
-                    Boolean.TRUE, new HashMap<>(), projectBuilder, null);
+                    Boolean.TRUE, new HashMap<>(), projectBuilder, null, 0);
         }
         if (StringUtil.isNotEmpty(returnType)) {
             return ParamsBuildHelper.buildParams(returnType, "", 0, null, projectBuilder.getCustomRespFieldMap(),
-                    Boolean.TRUE, new HashMap<>(), projectBuilder, null);
+                    Boolean.TRUE, new HashMap<>(), projectBuilder, null, 0);
         }
         return null;
     }
 
-    List<ApiDoc> getApiData(ProjectDocConfigBuilder projectBuilder);
+    List<T> getApiData(ProjectDocConfigBuilder projectBuilder);
 
-    ApiDoc getSingleApiData(ProjectDocConfigBuilder projectBuilder, String apiClassName);
+    T getSingleApiData(ProjectDocConfigBuilder projectBuilder, String apiClassName);
 
-    boolean ignoreReturnObject(String typeName);
+    boolean ignoreReturnObject(String typeName, List<String> ignoreParams);
 
 }

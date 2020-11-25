@@ -1,7 +1,7 @@
 /*
  * smart-doc https://github.com/shalousun/smart-doc
  *
- * Copyright (C) 2019-2020 smart-doc
+ * Copyright (C) 2018-2020 smart-doc
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -28,18 +28,14 @@ import com.power.doc.builder.ProjectDocConfigBuilder;
 import com.power.doc.constants.DocAnnotationConstants;
 import com.power.doc.constants.DocGlobalConstants;
 import com.power.doc.constants.DocTags;
-import com.power.doc.model.ApiReturn;
-import com.power.doc.model.CustomRespField;
-import com.power.doc.model.DocJavaField;
+import com.power.doc.model.*;
 import com.power.doc.utils.*;
-import com.thoughtworks.qdox.model.JavaAnnotation;
-import com.thoughtworks.qdox.model.JavaClass;
-import com.thoughtworks.qdox.model.JavaField;
-import com.thoughtworks.qdox.model.JavaMethod;
+import com.thoughtworks.qdox.model.*;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+
+import static com.power.doc.constants.DocTags.IGNORE_RESPONSE_BODY_ADVICE;
+
 
 /**
  * @author yu 2019/12/21.
@@ -49,17 +45,35 @@ public class JsonBuildHelper {
     /**
      * build return json
      *
-     * @param method  The JavaMethod object
-     * @param builder ProjectDocConfigBuilder builder
+     * @param docJavaMethod The JavaMethod object
+     * @param builder       ProjectDocConfigBuilder builder
      * @return String
      */
-    public static String buildReturnJson(JavaMethod method, ProjectDocConfigBuilder builder) {
+    public static String buildReturnJson(DocJavaMethod docJavaMethod, ProjectDocConfigBuilder builder) {
+        JavaMethod method = docJavaMethod.getJavaMethod();
         if (method.getReturns().isVoid()) {
             return "This api return nothing.";
         }
-        ApiReturn apiReturn = DocClassUtil.processReturnType(method.getReturnType().getGenericCanonicalName());
-        String returnType = apiReturn.getGenericCanonicalName();
+        String returnTypeGenericCanonicalName = method.getReturnType().getGenericCanonicalName();
+        if (Objects.nonNull(builder.getApiConfig().getResponseBodyAdvice())
+                && Objects.isNull(method.getTagByName(IGNORE_RESPONSE_BODY_ADVICE))) {
+            String responseBodyAdvice = builder.getApiConfig().getResponseBodyAdvice().getClassName();
+            StringBuilder sb = new StringBuilder();
+            sb.append(responseBodyAdvice)
+                    .append("<")
+                    .append(returnTypeGenericCanonicalName).append(">");
+            returnTypeGenericCanonicalName = sb.toString();
+        }
+        ApiReturn apiReturn = DocClassUtil.processReturnType(returnTypeGenericCanonicalName);
         String typeName = apiReturn.getSimpleName();
+        Map<String, JavaType> actualTypesMap = docJavaMethod.getActualTypesMap();
+        String returnType = apiReturn.getGenericCanonicalName();
+        if (Objects.nonNull(actualTypesMap)) {
+            for (Map.Entry<String, JavaType> entry : actualTypesMap.entrySet()) {
+                typeName = typeName.replace(entry.getKey(), entry.getValue().getCanonicalName());
+                returnType = returnType.replace(entry.getKey(), entry.getValue().getCanonicalName());
+            }
+        }
         return JsonFormatUtil.formatJson(buildJson(typeName, returnType, Boolean.TRUE, 0, new HashMap<>(), builder));
     }
 
@@ -74,13 +88,20 @@ public class JsonBuildHelper {
      */
     public static String buildJson(String typeName, String genericCanonicalName,
                                    boolean isResp, int counter, Map<String, String> registryClasses, ProjectDocConfigBuilder builder) {
+
+        //存储泛型所对应的实体类
+        Map<String, String> genericMap = new HashMap<>(10);
         JavaClass javaClass = builder.getJavaProjectBuilder().getClassByName(typeName);
+        ApiConfig apiConfig = builder.getApiConfig();
+        if (counter > apiConfig.getRecursionLimit()) {
+            return "{\"$ref\":\"...\"}";
+        }
         if (registryClasses.containsKey(typeName) && counter > registryClasses.size()) {
             return "{\"$ref\":\"...\"}";
         }
         int nextLevel = counter + 1;
         registryClasses.put(typeName, typeName);
-        if (JavaClassValidateUtil.isMvcIgnoreParams(typeName)) {
+        if (JavaClassValidateUtil.isMvcIgnoreParams(typeName, builder.getApiConfig().getIgnoreRequestParams())) {
             if (DocGlobalConstants.MODE_AND_VIEW_FULLY.equals(typeName)) {
                 return "Forward or redirect to a page view.";
             } else {
@@ -93,10 +114,15 @@ public class JsonBuildHelper {
         if (javaClass.isEnum()) {
             return String.valueOf(JavaClassUtil.getEnumValue(javaClass, Boolean.FALSE));
         }
+        boolean skipTransientField = apiConfig.isSkipTransientField();
         StringBuilder data0 = new StringBuilder();
         JavaClass cls = builder.getClassByName(typeName);
+
+
         data0.append("{");
         String[] globGicName = DocClassUtil.getSimpleGicName(genericCanonicalName);
+        //添加泛型对应关系
+        JavaClassUtil.genericParamMap(genericMap, cls, globGicName);
         StringBuilder data = new StringBuilder();
         if (JavaClassValidateUtil.isCollection(typeName) || JavaClassValidateUtil.isArray(typeName)) {
             data.append("[");
@@ -106,7 +132,7 @@ public class JsonBuildHelper {
                 return data.toString();
             }
             String gNameTemp = globGicName[0];
-            String gName = JavaClassValidateUtil.isArray(typeName) ? gNameTemp.substring(0, gNameTemp.indexOf("[")) : globGicName[0];
+            String gName = JavaClassValidateUtil.isArray(gNameTemp) ? gNameTemp.substring(0, gNameTemp.indexOf("[")) : globGicName[0];
             if (DocGlobalConstants.JAVA_OBJECT_FULLY.equals(gName)) {
                 data.append("{\"waring\":\"You may use java.util.Object instead of display generics in the List\"}");
             } else if (JavaClassValidateUtil.isPrimitive(gName)) {
@@ -152,30 +178,37 @@ public class JsonBuildHelper {
             data.append("{\"object\":\" any object\"},");
             // throw new RuntimeException("Please do not return java.lang.Object directly in api interface.");
         } else {
-            List<DocJavaField> fields = JavaClassUtil.getFields(cls, 0);
+            boolean requestFieldToUnderline = builder.getApiConfig().isRequestFieldToUnderline();
+            boolean responseFieldToUnderline = builder.getApiConfig().isResponseFieldToUnderline();
+            List<DocJavaField> fields = JavaClassUtil.getFields(cls, 0, new HashSet<>());
             boolean isGenerics = JavaFieldUtil.checkGenerics(fields);
-            int i = 0;
             out:
             for (DocJavaField docField : fields) {
                 JavaField field = docField.getJavaField();
-                String subTypeName = field.getType().getFullyQualifiedName();
+                String subTypeName = docField.getFullyQualifiedName();
                 String fieldName = field.getName();
                 if (field.isStatic() || "this$0".equals(fieldName) ||
                         JavaClassValidateUtil.isIgnoreFieldTypes(subTypeName)) {
                     continue;
                 }
-                Map<String, String> tagsMap = DocUtil.getFieldTagsValue(field);
+                if (field.isTransient() && skipTransientField) {
+                    continue;
+                }
+                if ((responseFieldToUnderline && isResp) || (requestFieldToUnderline && !isResp)) {
+                    fieldName = StringUtil.camelToUnderline(fieldName);
+                }
+                Map<String, String> tagsMap = DocUtil.getFieldTagsValue(field, docField);
                 if (!isResp) {
                     if (tagsMap.containsKey(DocTags.IGNORE)) {
                         continue out;
                     }
                 }
-                List<JavaAnnotation> annotations = field.getAnnotations();
+                List<JavaAnnotation> annotations = docField.getAnnotations();
                 for (JavaAnnotation annotation : annotations) {
                     String annotationName = annotation.getType().getValue();
-                    if (DocAnnotationConstants.SHORT_JSON_IGNORE.equals(annotationName) && isResp) {
+                    if (DocAnnotationConstants.SHORT_JSON_IGNORE.equals(annotationName)) {
                         continue out;
-                    } else if (DocAnnotationConstants.SHORT_JSON_FIELD.equals(annotationName) && isResp) {
+                    } else if (DocAnnotationConstants.SHORT_JSON_FIELD.equals(annotationName)) {
                         if (null != annotation.getProperty(DocAnnotationConstants.SERIALIZE_PROP)) {
                             if (Boolean.FALSE.toString().equals(annotation.getProperty(DocAnnotationConstants.SERIALIZE_PROP).toString())) {
                                 continue out;
@@ -183,7 +216,7 @@ public class JsonBuildHelper {
                         } else if (null != annotation.getProperty(DocAnnotationConstants.NAME_PROP)) {
                             fieldName = StringUtil.removeQuotes(annotation.getProperty(DocAnnotationConstants.NAME_PROP).toString());
                         }
-                    } else if (DocAnnotationConstants.SHORT_JSON_PROPERTY.equals(annotationName) && isResp) {
+                    } else if (DocAnnotationConstants.SHORT_JSON_PROPERTY.equals(annotationName)) {
                         if (null != annotation.getProperty(DocAnnotationConstants.VALUE_PROP)) {
                             fieldName = StringUtil.removeQuotes(annotation.getProperty(DocAnnotationConstants.VALUE_PROP).toString());
                         }
@@ -191,7 +224,7 @@ public class JsonBuildHelper {
                 }
                 String typeSimpleName = field.getType().getSimpleName();
 
-                String fieldGicName = field.getType().getGenericCanonicalName();
+                String fieldGicName = docField.getGenericCanonicalName();
                 data0.append("\"").append(fieldName).append("\":");
                 if (JavaClassValidateUtil.isPrimitive(subTypeName)) {
                     String fieldValue = "";
@@ -240,7 +273,7 @@ public class JsonBuildHelper {
                                 data0.append("{\"object\":\"any object\"},");
                                 continue out;
                             }
-                            String gicName1 = (i < globGicName.length) ? globGicName[i] : globGicName[globGicName.length - 1];
+                            String gicName1 = genericMap.get(gicName) == null ? globGicName[0] : genericMap.get(gicName);
                             if (DocGlobalConstants.JAVA_STRING_FULLY.equals(gicName1)) {
                                 data0.append("[").append("\"").append(buildJson(gicName1, gicName1, isResp, nextLevel, registryClasses, builder)).append("\"]").append(",");
                             } else {
@@ -268,7 +301,7 @@ public class JsonBuildHelper {
                         }
                         String gicName = fieldGicName.substring(fieldGicName.indexOf(",") + 1, fieldGicName.indexOf(">"));
                         if (gicName.length() == 1) {
-                            String gicName1 = (i < globGicName.length) ? globGicName[i] : globGicName[globGicName.length - 1];
+                            String gicName1 = genericMap.get(gicName) == null ? globGicName[0] : genericMap.get(gicName);
                             if (DocGlobalConstants.JAVA_STRING_FULLY.equals(gicName1)) {
                                 data0.append("{").append("\"mapKey\":\"").append(buildJson(gicName1, gicName1, isResp, nextLevel, registryClasses, builder)).append("\"},");
                             } else {
@@ -283,7 +316,7 @@ public class JsonBuildHelper {
                         }
                     } else if (subTypeName.length() == 1) {
                         if (!typeName.equals(genericCanonicalName)) {
-                            String gicName = globGicName[i];
+                            String gicName = genericMap.get(subTypeName) == null ? globGicName[0] : genericMap.get(subTypeName);
                             if (JavaClassValidateUtil.isPrimitive(gicName)) {
                                 data0.append(DocUtil.jsonValueByType(gicName)).append(",");
                             } else {
@@ -293,12 +326,11 @@ public class JsonBuildHelper {
                         } else {
                             data0.append("{\"waring\":\"You may have used non-display generics.\"},");
                         }
-                        i++;
                     } else if (DocGlobalConstants.JAVA_OBJECT_FULLY.equals(subTypeName)) {
                         if (isGenerics) {
                             data0.append("{\"object\":\"any object\"},");
-                        } else if (i < globGicName.length) {
-                            String gicName = globGicName[i];
+                        } else if (globGicName.length > 0) {
+                            String gicName = genericMap.get(subTypeName) == null ? globGicName[0] : genericMap.get(subTypeName);
                             if (!typeName.equals(genericCanonicalName)) {
                                 if (JavaClassValidateUtil.isPrimitive(gicName)) {
                                     data0.append("\"").append(buildJson(gicName, genericCanonicalName, isResp, nextLevel, registryClasses, builder)).append("\",");
@@ -311,9 +343,6 @@ public class JsonBuildHelper {
                             }
                         } else {
                             data0.append("{\"waring\":\"You may have used non-display generics.\"},");
-                        }
-                        if (!isGenerics) {
-                            i++;
                         }
                     } else if (typeName.equals(subTypeName)) {
                         data0.append("{\"$ref\":\"...\"}").append(",");
@@ -335,4 +364,6 @@ public class JsonBuildHelper {
         data0.append("}");
         return data0.toString();
     }
+
+
 }

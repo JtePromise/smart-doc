@@ -1,7 +1,7 @@
 /*
  * smart-doc https://github.com/shalousun/smart-doc
  *
- * Copyright (C) 2019-2020 smart-doc
+ * Copyright (C) 2018-2020 smart-doc
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -26,6 +26,8 @@ import com.power.common.util.RandomUtil;
 import com.power.common.util.StringUtil;
 import com.power.doc.builder.ProjectDocConfigBuilder;
 import com.power.doc.constants.DocGlobalConstants;
+import com.power.doc.constants.DocTags;
+import com.power.doc.model.ApiConfig;
 import com.power.doc.model.DocJavaField;
 import com.power.doc.model.FormData;
 import com.power.doc.utils.DocClassUtil;
@@ -36,6 +38,7 @@ import com.thoughtworks.qdox.model.JavaClass;
 import com.thoughtworks.qdox.model.JavaField;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -58,18 +61,25 @@ public class FormDataBuildHelper {
         if (StringUtil.isEmpty(className)) {
             throw new RuntimeException("Class name can't be null or empty.");
         }
-        // Check circular reference
+        ApiConfig apiConfig = builder.getApiConfig();
         List<FormData> formDataList = new ArrayList<>();
+        if (counter > apiConfig.getRecursionLimit()) {
+            return formDataList;
+        }
+        // Check circular reference
         if (registryClasses.containsKey(className) && counter > registryClasses.size()) {
             return formDataList;
         }
         // Registry class
         registryClasses.put(className, className);
         counter++;
+        boolean skipTransientField = apiConfig.isSkipTransientField();
+        boolean requestFieldToUnderline = apiConfig.isRequestFieldToUnderline();
+        boolean responseFieldToUnderline = apiConfig.isResponseFieldToUnderline();
         String simpleName = DocClassUtil.getSimpleName(className);
         String[] globGicName = DocClassUtil.getSimpleGicName(className);
         JavaClass cls = builder.getJavaProjectBuilder().getClassByName(simpleName);
-        List<DocJavaField> fields = JavaClassUtil.getFields(cls, 0);
+        List<DocJavaField> fields = JavaClassUtil.getFields(cls, 0, new HashSet<>());
 
         if (JavaClassValidateUtil.isPrimitive(simpleName)) {
             FormData formData = new FormData();
@@ -91,12 +101,22 @@ public class FormDataBuildHelper {
         for (DocJavaField docField : fields) {
             JavaField field = docField.getJavaField();
             String fieldName = field.getName();
-            String subTypeName = field.getType().getFullyQualifiedName();
-            String fieldGicName = field.getType().getGenericCanonicalName();
+            String subTypeName = docField.getFullyQualifiedName();
+            String fieldGicName = docField.getGenericCanonicalName();
             JavaClass javaClass = builder.getJavaProjectBuilder().getClassByName(subTypeName);
             if (field.isStatic() || "this$0".equals(fieldName) ||
                     JavaClassValidateUtil.isIgnoreFieldTypes(subTypeName)) {
                 continue;
+            }
+            if (field.isTransient() && skipTransientField) {
+                continue;
+            }
+            if (responseFieldToUnderline || requestFieldToUnderline) {
+                fieldName = StringUtil.camelToUnderline(fieldName);
+            }
+            Map<String, String> tagsMap = DocUtil.getFieldTagsValue(field, docField);
+            if (tagsMap.containsKey(DocTags.IGNORE)) {
+                continue out;
             }
             String typeSimpleName = field.getType().getSimpleName();
             if (JavaClassValidateUtil.isMap(subTypeName)) {
@@ -110,16 +130,21 @@ public class FormDataBuildHelper {
                 FormData formData = new FormData();
                 formData.setKey(pre + fieldName);
                 formData.setType("file");
-                formData.setDesc(comment);
+                formData.setDescription(comment);
                 formData.setValue("");
                 formDataList.add(formData);
             } else if (JavaClassValidateUtil.isPrimitive(subTypeName)) {
-                String fieldValue = DocUtil.getValByTypeAndFieldName(typeSimpleName, field.getName());
+                String fieldValue = "";
+                if (tagsMap.containsKey(DocTags.MOCK) && StringUtil.isNotEmpty(tagsMap.get(DocTags.MOCK))) {
+                    fieldValue = tagsMap.get(DocTags.MOCK);
+                } else {
+                    fieldValue = DocUtil.getValByTypeAndFieldName(typeSimpleName, field.getName());
+                }
                 FormData formData = new FormData();
                 formData.setKey(pre + fieldName);
                 formData.setType("text");
                 formData.setValue(StringUtil.removeQuotes(fieldValue));
-                formData.setDesc(comment);
+                formData.setDescription(comment);
                 formDataList.add(formData);
             } else if (javaClass.isEnum()) {
                 Object value = JavaClassUtil.getEnumValue(javaClass, Boolean.TRUE);
@@ -127,7 +152,7 @@ public class FormDataBuildHelper {
                 formData.setKey(pre + fieldName);
                 formData.setType("text");
                 formData.setValue(StringUtil.removeQuotes(String.valueOf(value)));
-                formData.setDesc(comment);
+                formData.setDescription(comment);
                 formDataList.add(formData);
             } else if (JavaClassValidateUtil.isCollection(subTypeName)) {
                 String gNameTemp = field.getType().getGenericCanonicalName();

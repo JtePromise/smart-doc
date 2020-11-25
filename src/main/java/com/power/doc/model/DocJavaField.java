@@ -1,7 +1,7 @@
 /*
  * smart-doc
  *
- * Copyright (C) 2019-2020 smart-doc
+ * Copyright (C) 2018-2020 smart-doc
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -22,7 +22,12 @@
  */
 package com.power.doc.model;
 
+import com.thoughtworks.qdox.model.DocletTag;
+import com.thoughtworks.qdox.model.JavaAnnotation;
 import com.thoughtworks.qdox.model.JavaField;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author yu 2020/3/19.
@@ -38,6 +43,41 @@ public class DocJavaField  {
      * comment
      */
     private String Comment;
+
+    /**
+     * tags
+     */
+    private List<DocletTag> docletTags;
+
+    /**
+     * annotations
+     */
+    private List<JavaAnnotation> annotations;
+
+    /**
+     * field fullyQualifiedName
+     */
+    private String fullyQualifiedName;
+
+    /**
+     * field genericCanonicalName
+     */
+    private String genericCanonicalName;
+
+    /**
+     * field generic actualJavaType;
+     */
+    private String actualJavaType;
+
+    private boolean array;
+
+    private boolean primitive;
+
+    private boolean collection;
+
+    private boolean file;
+
+    private boolean isEnum;
 
     public static DocJavaField builder() {
         return new DocJavaField();
@@ -59,5 +99,104 @@ public class DocJavaField  {
     public DocJavaField setComment(String comment) {
         Comment = comment;
         return this;
+    }
+
+    public String getFullyQualifiedName() {
+        return fullyQualifiedName;
+    }
+
+    public DocJavaField setFullyQualifiedName(String fullyQualifiedName) {
+        this.fullyQualifiedName = fullyQualifiedName;
+        return this;
+    }
+
+    public String getGenericCanonicalName() {
+        return genericCanonicalName;
+    }
+
+    public DocJavaField setGenericCanonicalName(String genericCanonicalName) {
+        this.genericCanonicalName = genericCanonicalName;
+        return this;
+    }
+
+    public String getActualJavaType() {
+        return actualJavaType;
+    }
+
+    public DocJavaField setActualJavaType(String actualJavaType) {
+        this.actualJavaType = actualJavaType;
+        return this;
+    }
+
+    public List<DocletTag> getDocletTags() {
+        if (docletTags == null) {
+            return new ArrayList<>();
+        }
+        return docletTags;
+    }
+
+    public DocJavaField setDocletTags(List<DocletTag> docletTags) {
+        this.docletTags = docletTags;
+        return this;
+    }
+
+    public List<JavaAnnotation> getAnnotations() {
+        List<JavaAnnotation> fieldAnnotations = javaField.getAnnotations();
+        if (fieldAnnotations != null && !fieldAnnotations.isEmpty()) {
+            return fieldAnnotations;
+        }
+        if (annotations == null) {
+            return new ArrayList<>();
+        }
+        return this.annotations;
+    }
+
+    public DocJavaField setAnnotations(List<JavaAnnotation> annotations) {
+        this.annotations = annotations;
+        return this;
+    }
+
+    public boolean isArray() {
+        return array;
+    }
+
+    public DocJavaField setArray(boolean array) {
+        this.array = array;
+        return this;
+    }
+
+    public boolean isPrimitive() {
+        return primitive;
+    }
+
+    public DocJavaField setPrimitive(boolean primitive) {
+        this.primitive = primitive;
+        return this;
+    }
+
+    public boolean isCollection() {
+        return collection;
+    }
+
+    public DocJavaField setCollection(boolean collection) {
+        this.collection = collection;
+        return this;
+    }
+
+    public boolean isFile() {
+        return file;
+    }
+
+    public DocJavaField setFile(boolean file) {
+        this.file = file;
+        return this;
+    }
+
+    public boolean isEnum() {
+        return isEnum;
+    }
+
+    public void setEnum(boolean anEnum) {
+        isEnum = anEnum;
     }
 }

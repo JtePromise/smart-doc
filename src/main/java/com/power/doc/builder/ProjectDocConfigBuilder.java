@@ -1,7 +1,7 @@
 /*
  * smart-doc https://github.com/shalousun/smart-doc
  *
- * Copyright (C) 2019-2020 smart-doc
+ * Copyright (C) 2018-2020 smart-doc
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -26,16 +26,14 @@ import com.power.common.constants.Charset;
 import com.power.common.util.CollectionUtil;
 import com.power.common.util.StringUtil;
 import com.power.doc.constants.DocGlobalConstants;
+import com.power.doc.constants.HighlightStyle;
 import com.power.doc.model.*;
 import com.power.doc.utils.JavaClassUtil;
 import com.thoughtworks.qdox.JavaProjectBuilder;
 import com.thoughtworks.qdox.model.JavaClass;
 
 import java.io.File;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static com.power.doc.constants.DocGlobalConstants.DEFAULT_SERVER_URL;
@@ -51,7 +49,9 @@ public class ProjectDocConfigBuilder {
 
     private Map<String, CustomRespField> customRespFieldMap = new ConcurrentHashMap<>();
 
-    private Map<String,String> replaceClassMap = new ConcurrentHashMap<>();
+    private Map<String, String> replaceClassMap = new ConcurrentHashMap<>();
+
+    private Map<String, String> constantsMap = new ConcurrentHashMap<>();
 
     private String serverUrl;
 
@@ -72,12 +72,30 @@ public class ProjectDocConfigBuilder {
         } else {
             this.serverUrl = apiConfig.getServerUrl();
         }
+        this.setHighlightStyle();
         javaProjectBuilder.setEncoding(Charset.DEFAULT_CHARSET);
         this.javaProjectBuilder = javaProjectBuilder;
         this.loadJavaSource(apiConfig.getSourceCodePaths(), this.javaProjectBuilder);
         this.initClassFilesMap();
         this.initCustomResponseFieldsMap(apiConfig);
         this.initReplaceClassMap(apiConfig);
+        this.initConstants(apiConfig);
+        this.checkResponseBodyAdvice(apiConfig);
+    }
+
+    public JavaClass getClassByName(String simpleName) {
+        JavaClass cls = javaProjectBuilder.getClassByName(simpleName);
+        List<DocJavaField> fieldList = JavaClassUtil.getFields(cls, 0, new HashSet<>());
+        // handle inner class
+        if (Objects.isNull(cls.getFields()) || fieldList.isEmpty()) {
+            cls = classFilesMap.get(simpleName);
+        } else {
+            List<JavaClass> classList = cls.getNestedClasses();
+            for (JavaClass javaClass : classList) {
+                classFilesMap.put(javaClass.getFullyQualifiedName(), javaClass);
+            }
+        }
+        return cls;
     }
 
     private void loadJavaSource(List<SourceCodePath> paths, JavaProjectBuilder builder) {
@@ -112,28 +130,71 @@ public class ProjectDocConfigBuilder {
         }
     }
 
-    private void initReplaceClassMap(ApiConfig config){
+    private void initReplaceClassMap(ApiConfig config) {
         if (CollectionUtil.isNotEmpty(config.getApiObjectReplacements())) {
             for (ApiObjectReplacement replace : config.getApiObjectReplacements()) {
-                replaceClassMap.put(replace.getClassName(),replace.getReplacementClassName());
+                replaceClassMap.put(replace.getClassName(), replace.getReplacementClassName());
             }
         }
     }
 
-
-    public JavaClass getClassByName(String simpleName) {
-        JavaClass cls = javaProjectBuilder.getClassByName(simpleName);
-        List<DocJavaField> fieldList = JavaClassUtil.getFields(cls, 0);
-        // handle inner class
-        if (Objects.isNull(cls.getFields()) || fieldList.isEmpty()) {
-            cls = classFilesMap.get(simpleName);
+    private void initConstants(ApiConfig config) {
+        List<ApiConstant> apiConstants;
+        if (CollectionUtil.isEmpty(config.getApiConstants())) {
+            apiConstants = new ArrayList<>();
         } else {
-            List<JavaClass> classList = cls.getNestedClasses();
-            for (JavaClass javaClass : classList) {
-                classFilesMap.put(javaClass.getFullyQualifiedName(), javaClass);
+            apiConstants = config.getApiConstants();
+        }
+        try {
+            for (ApiConstant apiConstant : apiConstants) {
+                Class<?> clzz = apiConstant.getConstantsClass();
+                if (Objects.isNull(clzz)) {
+                    if (StringUtil.isEmpty(apiConstant.getConstantsClassName())) {
+                        throw new RuntimeException("Enum class name can't be null.");
+                    }
+                    clzz = Class.forName(apiConstant.getConstantsClassName());
+                }
+                constantsMap.putAll(JavaClassUtil.getFinalFieldValue(clzz));
+            }
+        } catch (ClassNotFoundException | IllegalAccessException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void checkResponseBodyAdvice(ApiConfig config) {
+        ResponseBodyAdvice responseBodyAdvice = config.getResponseBodyAdvice();
+        if (Objects.nonNull(responseBodyAdvice) && StringUtil.isNotEmpty(responseBodyAdvice.getClassName())) {
+            try {
+                Class.forName(responseBodyAdvice.getClassName());
+            } catch (ClassNotFoundException e) {
+                throw new RuntimeException("Can't find class " + responseBodyAdvice.getClassName() + " for ResponseBodyAdvice.");
             }
         }
-        return cls;
+    }
+
+    /**
+     * 设置高亮样式
+     */
+    private void setHighlightStyle() {
+        String style = apiConfig.getStyle();
+        if (HighlightStyle.containsStyle(style)) {
+            return;
+        }
+        Random random = new Random();
+        if ("randomLight".equals(style)) {
+            // Eliminate styles that do not match the template
+            style = HighlightStyle.randomLight(random);
+            if(HighlightStyle.containsStyle(style)){
+                apiConfig.setStyle(style);
+            } else {
+                apiConfig.setStyle("null");
+            }
+        } else if ("randomDark".equals(style)) {
+            apiConfig.setStyle(HighlightStyle.randomDark(random));
+        } else {
+            // Eliminate styles that do not match the template
+            apiConfig.setStyle("null");
+        }
     }
 
 
@@ -161,5 +222,9 @@ public class ProjectDocConfigBuilder {
 
     public Map<String, String> getReplaceClassMap() {
         return replaceClassMap;
+    }
+
+    public Map<String, String> getConstantsMap() {
+        return constantsMap;
     }
 }

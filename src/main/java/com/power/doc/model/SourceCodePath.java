@@ -39,7 +39,12 @@ public class SourceCodePath {
      */
     private String desc;
 
+    @Deprecated
     public static SourceCodePath path() {
+        return new SourceCodePath();
+    }
+
+    public static SourceCodePath builder() {
         return new SourceCodePath();
     }
 
@@ -59,5 +64,16 @@ public class SourceCodePath {
     public SourceCodePath setDesc(String desc) {
         this.desc = desc;
         return this;
+    }
+
+    @Override
+    public String toString() {
+        final StringBuilder sb = new StringBuilder("{");
+        sb.append("\"path\":\"")
+                .append(path).append('\"');
+        sb.append(",\"desc\":\"")
+                .append(desc).append('\"');
+        sb.append('}');
+        return sb.toString();
     }
 }

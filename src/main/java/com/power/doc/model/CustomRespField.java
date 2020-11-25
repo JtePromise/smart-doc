@@ -51,7 +51,12 @@ public class CustomRespField {
      */
     private Object value;
 
+    @Deprecated
     public static CustomRespField field() {
+        return new CustomRespField();
+    }
+
+    public static CustomRespField builder() {
         return new CustomRespField();
     }
 
@@ -89,5 +94,20 @@ public class CustomRespField {
     public CustomRespField setValue(Object value) {
         this.value = value;
         return this;
+    }
+
+    @Override
+    public String toString() {
+        final StringBuilder sb = new StringBuilder("{");
+        sb.append("\"name\":\"")
+                .append(name).append('\"');
+        sb.append(",\"desc\":\"")
+                .append(desc).append('\"');
+        sb.append(",\"ownerClassName\":\"")
+                .append(ownerClassName).append('\"');
+        sb.append(",\"value\":")
+                .append(value);
+        sb.append('}');
+        return sb.toString();
     }
 }

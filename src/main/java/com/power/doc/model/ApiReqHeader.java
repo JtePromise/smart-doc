@@ -1,7 +1,7 @@
 /*
  * smart-doc
  *
- * Copyright (C) 2019-2020 smart-doc
+ * Copyright (C) 2018-2020 smart-doc
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -41,10 +41,12 @@ public class ApiReqHeader {
      * Request header type
      */
     private String type;
+
     /**
      * request header defaultValue
      */
     private String value;
+
     /**
      * Request header description
      */
@@ -64,7 +66,12 @@ public class ApiReqHeader {
      */
     private String since = "-";
 
+    @Deprecated
     public static ApiReqHeader header() {
+        return new ApiReqHeader();
+    }
+
+    public static ApiReqHeader builder() {
         return new ApiReqHeader();
     }
 
@@ -132,7 +139,25 @@ public class ApiReqHeader {
 
     @Override
     public int hashCode() {
-
         return Objects.hash(name);
+    }
+
+    @Override
+    public String toString() {
+        final StringBuilder sb = new StringBuilder("{");
+        sb.append("\"name\":\"")
+                .append(name).append('\"');
+        sb.append(",\"type\":\"")
+                .append(type).append('\"');
+        sb.append(",\"value\":\"")
+                .append(value).append('\"');
+        sb.append(",\"desc\":\"")
+                .append(desc).append('\"');
+        sb.append(",\"required\":")
+                .append(required);
+        sb.append(",\"since\":\"")
+                .append(since).append('\"');
+        sb.append('}');
+        return sb.toString();
     }
 }

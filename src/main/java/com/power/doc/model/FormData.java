@@ -1,7 +1,7 @@
 /*
  * smart-doc
  *
- * Copyright (C) 2019-2020 smart-doc
+ * Copyright (C) 2018-2020 smart-doc
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -28,7 +28,7 @@ package com.power.doc.model;
 public class FormData {
     private String key;
     private String type;
-    private String desc;
+    private String description;
     private String src;
     private String value;
 
@@ -64,12 +64,12 @@ public class FormData {
         this.value = value;
     }
 
-    public String getDesc() {
-        return desc;
+    public String getDescription() {
+        return description;
     }
 
-    public void setDesc(String desc) {
-        this.desc = desc;
+    public void setDescription(String description) {
+        this.description = description;
     }
 
     @Override
@@ -77,7 +77,7 @@ public class FormData {
         return "FormData{" +
                 "key='" + key + '\'' +
                 ", type='" + type + '\'' +
-                ", desc='" + desc + '\'' +
+                ", description='" + description + '\'' +
                 ", src='" + src + '\'' +
                 ", value='" + value + '\'' +
                 '}';
